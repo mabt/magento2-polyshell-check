@@ -32,13 +32,41 @@ polyshell_check.sh
 
 # Scan a specific instance
 polyshell_check.sh /path/to/magento2
+
+# Quiet mode: only show instances with problems (for Ansible/cron)
+polyshell_check.sh --quiet
+polyshell_check.sh -q /path/to/magento2
+```
+
+### Ansible example
+
+```yaml
+- name: Deploy and run PolyShell scanner
+  hosts: magento_servers
+  tasks:
+    - name: Install polyshell_check.sh
+      get_url:
+        url: https://raw.githubusercontent.com/mabt/magento2-polyshell-check/main/polyshell_check.sh
+        dest: /usr/local/bin/polyshell_check.sh
+        mode: "0755"
+
+    - name: Run PolyShell scan
+      command: /usr/local/bin/polyshell_check.sh --quiet
+      register: scan_result
+      failed_when: scan_result.rc == 1
+      changed_when: false
+
+    - name: Show results
+      debug:
+        msg: "{{ scan_result.stdout }}"
+      when: scan_result.rc != 0
 ```
 
 ## Example output
 
 ```
 ============================================================
- Instance 1/3 : prod
+ [server01] Instance 1/3 : prod
 ============================================================
  Racine    : /home/user-prod/www/production/releases/20260319132459
  Home      : /home/user-prod
