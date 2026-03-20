@@ -7,6 +7,8 @@
 # Usage:
 #   polyshell_check.sh                         # Auto-détection des Magento
 #   polyshell_check.sh /chemin/vers/magento2   # Scan d'une instance spécifique
+#   polyshell_check.sh --quiet                 # N'affiche que les instances avec problèmes
+#   polyshell_check.sh --quiet /chemin/magento  # Combinable
 #
 # Codes retour:
 #   0 = aucun problème détecté
@@ -28,12 +30,25 @@ TOTAL_WARNINGS=0
 INSTANCE_NUM=0
 INSTANCE_TOTAL=0
 SUMMARY_LINES=()
+QUIET=false
+HOSTNAME=$(hostname)
 
-warn()  { echo -e "  ${YELLOW}[ATTENTION]${NC} $*"; WARNINGS=$((WARNINGS + 1)); TOTAL_WARNINGS=$((TOTAL_WARNINGS + 1)); }
-alert() { echo -e "  ${RED}[ALERTE]${NC} $*"; ALERTS=$((ALERTS + 1)); TOTAL_ALERTS=$((TOTAL_ALERTS + 1)); }
-ok()    { echo -e "  ${GREEN}[OK]${NC} $*"; }
-info()  { echo -e "  ${BOLD}[INFO]${NC} $*"; }
-detail(){ echo -e "         $*"; }
+# En mode quiet, on bufferise la sortie de chaque instance
+BUFFER=""
+
+out() {
+    if [[ "$QUIET" == true ]]; then
+        BUFFER+="$1"$'\n'
+    else
+        echo -e "$1"
+    fi
+}
+
+warn()  { out "  ${YELLOW}[ATTENTION]${NC} $*"; WARNINGS=$((WARNINGS + 1)); TOTAL_WARNINGS=$((TOTAL_WARNINGS + 1)); }
+alert() { out "  ${RED}[ALERTE]${NC} $*"; ALERTS=$((ALERTS + 1)); TOTAL_ALERTS=$((TOTAL_ALERTS + 1)); }
+ok()    { out "  ${GREEN}[OK]${NC} $*"; }
+info()  { out "  ${BOLD}[INFO]${NC} $*"; }
+detail(){ out "         $*"; }
 
 # -------------------------------------------------------------------
 # Scan d'une instance Magento
@@ -44,6 +59,7 @@ scan_magento() {
     SCAN_START=$(date +%s)
     ALERTS=0
     WARNINGS=0
+    BUFFER=""
 
     local USER_HOME
     USER_HOME=$(echo "$MAGENTO_ROOT" | grep -oP '^/home/[^/]+' || true)
@@ -57,15 +73,15 @@ scan_magento() {
 
     INSTANCE_NUM=$((INSTANCE_NUM + 1))
 
-    echo ""
-    echo -e "${BOLD}============================================================${NC}"
-    echo -e " ${CYAN}${BOLD}Instance $INSTANCE_NUM/$INSTANCE_TOTAL : $INSTANCE_LABEL${NC}"
-    echo -e "${BOLD}============================================================${NC}"
-    echo -e " ${DIM}Racine    :${NC} $MAGENTO_ROOT"
-    echo -e " ${DIM}Home      :${NC} $USER_HOME"
-    echo -e " ${DIM}Date      :${NC} $(date '+%Y-%m-%d %H:%M:%S')"
-    echo -e "${BOLD}------------------------------------------------------------${NC}"
-    echo ""
+    out ""
+    out "${BOLD}============================================================${NC}"
+    out " ${CYAN}${BOLD}[$HOSTNAME] Instance $INSTANCE_NUM/$INSTANCE_TOTAL : $INSTANCE_LABEL${NC}"
+    out "${BOLD}============================================================${NC}"
+    out " ${DIM}Racine    :${NC} $MAGENTO_ROOT"
+    out " ${DIM}Home      :${NC} $USER_HOME"
+    out " ${DIM}Date      :${NC} $(date '+%Y-%m-%d %H:%M:%S')"
+    out "${BOLD}------------------------------------------------------------${NC}"
+    out ""
 
     # ---------------------------------------------------------------
     # 1. Version de Magento
@@ -81,7 +97,7 @@ scan_magento() {
     else
         warn "Impossible de déterminer la version (composer.json introuvable)."
     fi
-    echo ""
+    out ""
 
     # ---------------------------------------------------------------
     # 2. Fichiers suspects dans les répertoires d'upload
@@ -135,7 +151,7 @@ scan_magento() {
             ok "[$DIR_NAME] Aucun fichier polyglot détecté."
         fi
     done
-    echo ""
+    out ""
 
     # ---------------------------------------------------------------
     # 3. Permissions des répertoires d'upload
@@ -159,7 +175,7 @@ scan_magento() {
             fi
         fi
     done
-    echo ""
+    out ""
 
     # ---------------------------------------------------------------
     # 4. Protection .htaccess
@@ -187,7 +203,7 @@ scan_magento() {
     else
         warn "Pas de .htaccess dans custom_options."
     fi
-    echo ""
+    out ""
 
     # ---------------------------------------------------------------
     # 5. Webshells dans pub/media
@@ -207,7 +223,7 @@ scan_magento() {
     else
         warn "Répertoire pub/media introuvable."
     fi
-    echo ""
+    out ""
 
     # ---------------------------------------------------------------
     # 6. Produits avec custom options de type "file"
@@ -255,7 +271,7 @@ scan_magento() {
     else
         warn "Impossible de lire la configuration DB depuis env.php."
     fi
-    echo ""
+    out ""
 
     # ---------------------------------------------------------------
     # 7. Logs d'exploitation
@@ -290,7 +306,7 @@ scan_magento() {
     else
         warn "Répertoire de logs $LOGS_DIR introuvable."
     fi
-    echo ""
+    out ""
 
     # ---------------------------------------------------------------
     # 8. Résumé de l'instance
@@ -299,18 +315,25 @@ scan_magento() {
     SCAN_END=$(date +%s)
     local SCAN_DURATION=$((SCAN_END - SCAN_START))
 
-    echo -e "${BOLD}------------------------------------------------------------${NC}"
+    out "${BOLD}------------------------------------------------------------${NC}"
     if [[ $ALERTS -gt 0 ]]; then
-        echo -e "  ${RED}${BOLD}$INSTANCE_LABEL : $ALERTS alerte(s), $WARNINGS attention(s)${NC} ${DIM}(${SCAN_DURATION}s)${NC}"
-        SUMMARY_LINES+=("${RED}  $INSTANCE_LABEL ($MAGE_VERSION) : $ALERTS alerte(s), $WARNINGS attention(s)${NC}")
+        out "  ${RED}${BOLD}$INSTANCE_LABEL : $ALERTS alerte(s), $WARNINGS attention(s)${NC} ${DIM}(${SCAN_DURATION}s)${NC}"
+        SUMMARY_LINES+=("${RED}  [$HOSTNAME] $INSTANCE_LABEL ($MAGE_VERSION) : $ALERTS alerte(s), $WARNINGS attention(s)${NC}")
     elif [[ $WARNINGS -gt 0 ]]; then
-        echo -e "  ${YELLOW}${BOLD}$INSTANCE_LABEL : $WARNINGS point(s) d'attention${NC} ${DIM}(${SCAN_DURATION}s)${NC}"
-        SUMMARY_LINES+=("${YELLOW}  $INSTANCE_LABEL ($MAGE_VERSION) : $WARNINGS point(s) d'attention${NC}")
+        out "  ${YELLOW}${BOLD}$INSTANCE_LABEL : $WARNINGS point(s) d'attention${NC} ${DIM}(${SCAN_DURATION}s)${NC}"
+        SUMMARY_LINES+=("${YELLOW}  [$HOSTNAME] $INSTANCE_LABEL ($MAGE_VERSION) : $WARNINGS point(s) d'attention${NC}")
     else
-        echo -e "  ${GREEN}${BOLD}$INSTANCE_LABEL : aucun problème${NC} ${DIM}(${SCAN_DURATION}s)${NC}"
-        SUMMARY_LINES+=("${GREEN}  $INSTANCE_LABEL ($MAGE_VERSION) : aucun problème${NC}")
+        out "  ${GREEN}${BOLD}$INSTANCE_LABEL : aucun problème${NC} ${DIM}(${SCAN_DURATION}s)${NC}"
+        SUMMARY_LINES+=("${GREEN}  [$HOSTNAME] $INSTANCE_LABEL ($MAGE_VERSION) : aucun problème${NC}")
     fi
-    echo -e "${BOLD}============================================================${NC}"
+    out "${BOLD}============================================================${NC}"
+
+    # En mode quiet, n'afficher que si problème détecté
+    if [[ "$QUIET" == true ]]; then
+        if [[ $ALERTS -gt 0 || $WARNINGS -gt 0 ]]; then
+            echo -e "$BUFFER"
+        fi
+    fi
 }
 
 # -------------------------------------------------------------------
@@ -333,7 +356,7 @@ find_magento_instances() {
         SEARCH_DIR="$HOME"
     fi
 
-    info "Recherche des instances Magento 2 dans $SEARCH_DIR ..."
+    echo -e "  ${BOLD}[INFO]${NC} [$HOSTNAME] Recherche des instances Magento 2 dans $SEARCH_DIR ..."
     echo ""
 
     INSTANCES=()
@@ -364,7 +387,7 @@ find_magento_instances() {
     INSTANCE_TOTAL=${#INSTANCES[@]}
     echo "  Instances trouvées : $INSTANCE_TOTAL"
     for inst in "${INSTANCES[@]}"; do
-        detail "-> $inst"
+        echo -e "         -> $inst"
     done
 
     for inst in "${INSTANCES[@]}"; do
@@ -373,10 +396,21 @@ find_magento_instances() {
 }
 
 # -------------------------------------------------------------------
+# Parsing des arguments
+# -------------------------------------------------------------------
+MAGENTO_PATH=""
+for arg in "$@"; do
+    case "$arg" in
+        --quiet|-q) QUIET=true ;;
+        *) MAGENTO_PATH="$arg" ;;
+    esac
+done
+
+# -------------------------------------------------------------------
 # Point d'entrée
 # -------------------------------------------------------------------
-if [[ $# -ge 1 ]]; then
-    MAGENTO_ROOT="$(realpath "$1")"
+if [[ -n "$MAGENTO_PATH" ]]; then
+    MAGENTO_ROOT="$(realpath "$MAGENTO_PATH")"
     if [[ ! -f "$MAGENTO_ROOT/app/etc/env.php" ]]; then
         echo "Erreur: '$MAGENTO_ROOT' ne semble pas être une installation Magento 2."
         exit 1
@@ -393,7 +427,7 @@ fi
 if [[ $INSTANCE_TOTAL -gt 1 ]]; then
     echo ""
     echo -e "${BOLD}============================================================${NC}"
-    echo -e " ${BOLD}RÉSUMÉ GLOBAL ($INSTANCE_TOTAL instances)${NC}"
+    echo -e " ${BOLD}[$HOSTNAME] RÉSUMÉ GLOBAL ($INSTANCE_TOTAL instances)${NC}"
     echo -e "${BOLD}============================================================${NC}"
     for line in "${SUMMARY_LINES[@]}"; do
         echo -e "$line"
@@ -409,14 +443,16 @@ if [[ $INSTANCE_TOTAL -gt 1 ]]; then
     echo -e "${BOLD}============================================================${NC}"
 fi
 
-echo ""
-echo "Recommandations :"
-echo "  1. Bloquer l'exécution PHP/CGI dans pub/media/ (config serveur web)"
-echo "  2. Supprimer les options produit de type 'file' si non nécessaires"
-echo "  3. Mettre à jour Magento vers la dernière version avec les patches"
-echo "  4. Scanner régulièrement avec un outil comme eComscan (sansec.io)"
-echo "  5. Surveiller le répertoire pub/media/custom_options/ pour tout nouveau fichier"
-echo ""
+if [[ "$QUIET" != true ]]; then
+    echo ""
+    echo "Recommandations :"
+    echo "  1. Bloquer l'exécution PHP/CGI dans pub/media/ (config serveur web)"
+    echo "  2. Supprimer les options produit de type 'file' si non nécessaires"
+    echo "  3. Mettre à jour Magento vers la dernière version avec les patches"
+    echo "  4. Scanner régulièrement avec un outil comme eComscan (sansec.io)"
+    echo "  5. Surveiller le répertoire pub/media/custom_options/ pour tout nouveau fichier"
+    echo ""
+fi
 
 if [[ $TOTAL_ALERTS -gt 0 ]]; then
     exit 1
