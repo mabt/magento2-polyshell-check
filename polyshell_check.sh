@@ -27,6 +27,7 @@ NC='\033[0m'
 
 TOTAL_ALERTS=0
 TOTAL_WARNINGS=0
+TOTAL_EXPLOITED=0
 INSTANCE_NUM=0
 INSTANCE_TOTAL=0
 SUMMARY_LINES=()
@@ -59,6 +60,7 @@ scan_magento() {
     SCAN_START=$(date +%s)
     ALERTS=0
     WARNINGS=0
+    EXPLOITED=0
     BUFFER=""
 
     local USER_HOME
@@ -300,6 +302,8 @@ scan_magento() {
         if [[ -n "$EXPLOITED_LINES" ]]; then
             local EXPLOITED_COUNT
             EXPLOITED_COUNT=$(echo "$EXPLOITED_LINES" | wc -l)
+            EXPLOITED=1
+            TOTAL_EXPLOITED=$((TOTAL_EXPLOITED + 1))
             alert "EXPLOITATION ACTIVE : $EXPLOITED_COUNT requête(s) HTTP 200 sur des .php dans custom_options :"
             echo "$EXPLOITED_LINES" | while read -r line; do detail "$line"; done
         fi
@@ -328,9 +332,12 @@ scan_magento() {
     local SCAN_DURATION=$((SCAN_END - SCAN_START))
 
     out "${BOLD}------------------------------------------------------------${NC}"
-    if [[ $ALERTS -gt 0 ]]; then
-        out "  ${RED}${BOLD}$INSTANCE_LABEL : $ALERTS alerte(s), $WARNINGS attention(s)${NC} ${DIM}(${SCAN_DURATION}s)${NC}"
-        SUMMARY_LINES+=("${RED}  [$HOSTNAME] $INSTANCE_LABEL ($MAGE_VERSION) : $ALERTS alerte(s), $WARNINGS attention(s)${NC}")
+    if [[ $EXPLOITED -gt 0 ]]; then
+        out "  ${RED}${BOLD}$INSTANCE_LABEL : EXPLOITATION ACTIVE + $ALERTS alerte(s), $WARNINGS attention(s)${NC} ${DIM}(${SCAN_DURATION}s)${NC}"
+        SUMMARY_LINES+=("${RED}  [$HOSTNAME] $INSTANCE_LABEL ($MAGE_VERSION) : EXPLOITÉ - $ALERTS alerte(s), $WARNINGS attention(s)${NC}")
+    elif [[ $ALERTS -gt 0 ]]; then
+        out "  ${YELLOW}${BOLD}$INSTANCE_LABEL : $ALERTS alerte(s), $WARNINGS attention(s)${NC} ${DIM}(${SCAN_DURATION}s)${NC}"
+        SUMMARY_LINES+=("${YELLOW}  [$HOSTNAME] $INSTANCE_LABEL ($MAGE_VERSION) : $ALERTS alerte(s), $WARNINGS attention(s)${NC}")
     elif [[ $WARNINGS -gt 0 ]]; then
         out "  ${YELLOW}${BOLD}$INSTANCE_LABEL : $WARNINGS point(s) d'attention${NC} ${DIM}(${SCAN_DURATION}s)${NC}"
         SUMMARY_LINES+=("${YELLOW}  [$HOSTNAME] $INSTANCE_LABEL ($MAGE_VERSION) : $WARNINGS point(s) d'attention${NC}")
@@ -445,8 +452,10 @@ if [[ $INSTANCE_TOTAL -gt 1 ]]; then
         echo -e "$line"
     done
     echo -e "${BOLD}------------------------------------------------------------${NC}"
-    if [[ $TOTAL_ALERTS -gt 0 ]]; then
-        echo -e "  ${RED}${BOLD}TOTAL : $TOTAL_ALERTS alerte(s), $TOTAL_WARNINGS attention(s)${NC}"
+    if [[ $TOTAL_EXPLOITED -gt 0 ]]; then
+        echo -e "  ${RED}${BOLD}TOTAL : $TOTAL_EXPLOITED EXPLOITÉ(S), $TOTAL_ALERTS alerte(s), $TOTAL_WARNINGS attention(s)${NC}"
+    elif [[ $TOTAL_ALERTS -gt 0 ]]; then
+        echo -e "  ${YELLOW}${BOLD}TOTAL : $TOTAL_ALERTS alerte(s), $TOTAL_WARNINGS attention(s)${NC}"
     elif [[ $TOTAL_WARNINGS -gt 0 ]]; then
         echo -e "  ${YELLOW}${BOLD}TOTAL : $TOTAL_WARNINGS point(s) d'attention${NC}"
     else
