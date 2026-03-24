@@ -293,13 +293,25 @@ scan_magento() {
     local LOGS_DIR="$USER_HOME/logs"
     if [[ -d "$LOGS_DIR" ]]; then
         info "Recherche dans les logs serveur : $LOGS_DIR"
+
+        # Exploitation RÉUSSIE : accès HTTP 200 à des .php dans custom_options
+        local EXPLOITED_LINES
+        EXPLOITED_LINES=$(grep -ahP 'custom_options/.*\.php.*"\s+200\s' "$LOGS_DIR"/*/*.log 2>/dev/null | head -20 || true)
+        if [[ -n "$EXPLOITED_LINES" ]]; then
+            local EXPLOITED_COUNT
+            EXPLOITED_COUNT=$(echo "$EXPLOITED_LINES" | wc -l)
+            alert "EXPLOITATION ACTIVE : $EXPLOITED_COUNT requête(s) HTTP 200 sur des .php dans custom_options :"
+            echo "$EXPLOITED_LINES" | while read -r line; do detail "$line"; done
+        fi
+
+        # Tentatives d'accès (tous codes HTTP)
         while IFS= read -r ACCESS_LOG; do
             local EXPLOIT_ATTEMPTS
-            EXPLOIT_ATTEMPTS=$(grep -cP 'custom_options/quote/.*\.(php|phtml|pht|cgi|sh|pl)' "$ACCESS_LOG" 2>/dev/null || true)
+            EXPLOIT_ATTEMPTS=$(grep -caP 'custom_options/quote/.*\.(php|phtml|pht|cgi|sh|pl)' "$ACCESS_LOG" 2>/dev/null || true)
             EXPLOIT_ATTEMPTS="${EXPLOIT_ATTEMPTS//[^0-9]/}"
             EXPLOIT_ATTEMPTS="${EXPLOIT_ATTEMPTS:-0}"
             if [[ "$EXPLOIT_ATTEMPTS" -gt 0 ]]; then
-                alert "$EXPLOIT_ATTEMPTS accès suspect(s) dans : $ACCESS_LOG"
+                warn "$EXPLOIT_ATTEMPTS tentative(s) d'accès dans : $ACCESS_LOG"
             fi
         done < <(find "$LOGS_DIR" -type f -name '*.log' 2>/dev/null)
         ok "Logs serveur analysés."
